@@ -74,7 +74,7 @@ You can install AB Download Manager on NixOS by adding the community flake to yo
     {
       inputs = {
         # Add this line
-        ab-download-manager.url = "github:amir1376/ab-download-manager";
+        ab-download-manager.url = "github:bonnjalal/ab-download-manager";
       };
     }
     ```
