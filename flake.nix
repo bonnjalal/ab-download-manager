@@ -8,10 +8,10 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "1.6.8";
+        version = "1.7.0";
         src = pkgs.fetchurl {
           url = "https://github.com/amir1376/ab-download-manager/releases/download/v${version}/ABDownloadManager_${version}_linux_x64.tar.gz";
-          sha256 = "355be492ca0a4b852da0619782590c6359ff124686fb277a5c30c4452c9b2725";
+          sha256 = "aa7685a7744694e94d894cb6273cd19594e256082b2202df98410c23ad3f3e57";
         };
         runtimeDeps = with pkgs; [
 # GUI and windowing
