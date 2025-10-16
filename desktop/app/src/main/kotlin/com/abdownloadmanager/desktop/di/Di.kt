@@ -11,6 +11,7 @@ import com.abdownloadmanager.desktop.DownloadDialogManager
 import com.abdownloadmanager.desktop.EditDownloadDialogManager
 import com.abdownloadmanager.desktop.FileChecksumDialogManager
 import com.abdownloadmanager.desktop.NotificationSender
+import com.abdownloadmanager.desktop.PerHostSettingsPageManager
 import com.abdownloadmanager.desktop.QueuePageManager
 import com.abdownloadmanager.desktop.SharedConstants
 import com.abdownloadmanager.desktop.PowerActionManager
@@ -19,7 +20,7 @@ import com.abdownloadmanager.desktop.actions.onevennts.DesktopOnQueueEventAction
 import com.abdownloadmanager.desktop.integration.IntegrationHandlerImp
 import com.abdownloadmanager.desktop.pages.category.CategoryDialogManager
 import com.abdownloadmanager.desktop.pages.settings.FontManager
-import com.abdownloadmanager.desktop.pages.settings.ThemeManager
+import com.abdownloadmanager.shared.ui.theme.ThemeManager
 import com.abdownloadmanager.desktop.pages.updater.UpdateDownloaderViaDownloadSystem
 import ir.amirab.downloader.queue.QueueManager
 import com.abdownloadmanager.desktop.repository.AppRepository
@@ -32,19 +33,27 @@ import com.abdownloadmanager.desktop.utils.native_messaging.NativeMessagingManif
 import com.abdownloadmanager.desktop.utils.proxy.AutoConfigurableProxyProviderForDesktop
 import com.abdownloadmanager.desktop.utils.proxy.DesktopSystemProxySelectorProvider
 import com.abdownloadmanager.desktop.utils.proxy.ProxyCachingConfig
+import com.abdownloadmanager.integration.HLSDownloadCredentialsFromIntegration
+import com.abdownloadmanager.integration.HttpDownloadCredentialsFromIntegration
+import com.abdownloadmanager.integration.IDownloadCredentialsFromIntegration
 import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import ir.amirab.downloader.DownloadManagerMinimalControl
 import ir.amirab.downloader.DownloadSettings
-import ir.amirab.downloader.connection.DownloaderClient
-import ir.amirab.downloader.connection.OkHttpDownloaderClient
+import ir.amirab.downloader.connection.HttpDownloaderClient
+import ir.amirab.downloader.connection.OkHttpHttpDownloaderClient
 import ir.amirab.downloader.db.*
 import ir.amirab.downloader.monitor.DownloadMonitor
 import ir.amirab.downloader.utils.IDiskStat
 import ir.amirab.util.startup.Startup
 import com.abdownloadmanager.integration.Integration
+import com.abdownloadmanager.shared.downloaderinui.DownloaderInUiRegistry
+import com.abdownloadmanager.shared.downloaderinui.hls.HLSDownloaderInUi
+import com.abdownloadmanager.shared.downloaderinui.http.HttpDownloaderInUi
 import com.abdownloadmanager.shared.storage.IExtraDownloadSettingsStorage
 import com.abdownloadmanager.shared.storage.IExtraQueueSettingsStorage
+import com.abdownloadmanager.shared.ui.theme.ThemeSettingsStorage
+import com.abdownloadmanager.shared.util.SizeAndSpeedUnitProvider
 import com.abdownloadmanager.shared.utils.*
 import com.abdownloadmanager.updateapplier.DesktopUpdateApplier
 import com.abdownloadmanager.updateapplier.UpdateApplier
@@ -68,20 +77,38 @@ import com.abdownloadmanager.shared.utils.ondownloadcompletion.OnDownloadComplet
 import com.abdownloadmanager.shared.utils.ondownloadcompletion.OnDownloadCompletionActionRunner
 import com.abdownloadmanager.shared.utils.onqueuecompletion.OnQueueEventActionRunner
 import com.abdownloadmanager.shared.utils.onqueuecompletion.OnQueueCompletionActionProvider
+import com.abdownloadmanager.shared.utils.perhostsettings.IPerHostSettingsStorage
+import com.abdownloadmanager.shared.utils.perhostsettings.PerHostSettingsItem
+import com.abdownloadmanager.shared.utils.perhostsettings.PerHostSettingsManager
 import com.abdownloadmanager.shared.utils.ui.IMyIcons
 import com.abdownloadmanager.shared.utils.proxy.IProxyStorage
 import com.abdownloadmanager.shared.utils.proxy.ProxyData
 import com.abdownloadmanager.shared.utils.proxy.ProxyManager
+import ir.amirab.downloader.DownloaderRegistry
 import ir.amirab.downloader.connection.UserAgentProvider
 import ir.amirab.downloader.connection.proxy.AutoConfigurableProxyProvider
 import ir.amirab.downloader.connection.proxy.ProxyStrategyProvider
 import ir.amirab.downloader.connection.proxy.SystemProxySelectorProvider
+import ir.amirab.downloader.downloaditem.DownloadJob
+import ir.amirab.downloader.downloaditem.IDownloadItem
+import ir.amirab.downloader.downloaditem.hls.HLSDownloader
+import ir.amirab.downloader.downloaditem.http.HttpDownloadItem
+import ir.amirab.downloader.downloaditem.http.HttpDownloader
+import ir.amirab.downloader.monitor.DownloadItemStateFactory
 import ir.amirab.downloader.monitor.IDownloadMonitor
 import ir.amirab.downloader.utils.EmptyFileCreator
 import ir.amirab.util.compose.localizationmanager.LanguageManager
 import ir.amirab.util.compose.localizationmanager.LanguageStorage
 import ir.amirab.util.config.datastore.kotlinxSerializationDataStore
 import ir.amirab.util.desktop.DesktopUtils
+import ir.amirab.util.desktop.downloadlocation.LinuxDownloadLocationProvider
+import ir.amirab.util.desktop.downloadlocation.MacDownloadLocationProvider
+import ir.amirab.util.desktop.downloadlocation.WindowsDownloadLocationProvider
+import ir.amirab.util.platform.Platform
+import ir.amirab.util.platform.asDesktop
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+import okhttp3.Protocol
 import okhttp3.internal.tls.OkHostnameVerifier
 
 val downloaderModule = module {
@@ -146,8 +173,8 @@ val downloaderModule = module {
     single<UserAgentProvider> {
         UserAgentProviderFromSettings(get())
     }
-    single<DownloaderClient> {
-        OkHttpDownloaderClient(
+    single<HttpDownloaderClient> {
+        OkHttpHttpDownloaderClient(
             get(),
             get(),
             get(),
@@ -163,10 +190,46 @@ val downloaderModule = module {
         )
     }
     single {
-        DownloadManager(get(), get(), get(), get(), get(), get())
+        HLSDownloader(inject())
+    }
+    single {
+        HLSDownloaderInUi(get(), get())
+    }
+    single {
+        HttpDownloader(inject())
+    }
+    single {
+        HttpDownloaderInUi(get(), get())
+    }
+    single {
+        DownloaderInUiRegistry().apply {
+            add(get<HttpDownloaderInUi>())
+            add(get<HLSDownloaderInUi>())
+        }
+    }.bind<DownloadItemStateFactory<IDownloadItem, DownloadJob>>()
+    single {
+        DownloaderRegistry().apply {
+            add(get<HttpDownloader>())
+            add(get<HLSDownloader>())
+        }
+    }
+    single {
+        DownloadManager(
+            get(),
+            get(),
+            get(),
+            get(),
+            get(),
+            get<DownloadFoldersRegistry>().registerAndGet(
+                AppInfo.systemDir.resolve("downloadData")
+            )
+        )
     }.bind(DownloadManagerMinimalControl::class)
     single<IDownloadMonitor> {
-        DownloadMonitor(get())
+        DownloadMonitor(
+            downloadManager = get(),
+            downloadItemStateFactory = inject()
+        )
     }
 }
 val downloadSystemModule = module {
@@ -260,10 +323,35 @@ val coroutineModule = module {
 }
 val jsonModule = module {
     single {
+        val downloaderRegistry: DownloaderRegistry by inject()
         Json {
             this.encodeDefaults = true
             this.prettyPrint = true
             this.ignoreUnknownKeys = true
+            this.serializersModule = SerializersModule {
+                polymorphic(IDownloadItem::class) {
+                    downloaderRegistry.getAll().forEach {
+                        subclass(it.downloadItemClass, it.downloadItemSerializer)
+                    }
+                    defaultDeserializer {
+                        HttpDownloadItem.serializer()
+                    }
+                }
+                // TODO remove this later
+                polymorphic(IDownloadCredentialsFromIntegration::class) {
+                    subclass(
+                        HttpDownloadCredentialsFromIntegration::class,
+                        HttpDownloadCredentialsFromIntegration.serializer()
+                    )
+                    subclass(
+                        HLSDownloadCredentialsFromIntegration::class,
+                        HLSDownloadCredentialsFromIntegration.serializer()
+                    )
+                    defaultDeserializer {
+                        HttpDownloadCredentialsFromIntegration.serializer()
+                    }
+                }
+            }
         }
     }
 }
@@ -272,7 +360,7 @@ val integrationModule = module {
         IntegrationHandlerImp()
     }
     single {
-        Integration(get(), get(), AppInfo.isInDebugMode())
+        Integration(get(), get(), get(), AppInfo.isInDebugMode())
     }
 }
 val updaterModule = module {
@@ -343,6 +431,8 @@ val appModule = module {
 //    }
     single {
         AppRepository()
+    }.apply {
+        bind<SizeAndSpeedUnitProvider>()
     }
     single {
         ThemeManager(get(), get(), get())
@@ -372,7 +462,10 @@ val appModule = module {
                 get(),
             )
         )
-    }.bind<LanguageStorage>()
+    }.apply {
+        bind<LanguageStorage>()
+        bind<ThemeSettingsStorage>()
+    }
     single {
         PageStatesStorage(
             createMapConfigDatastore(
@@ -398,6 +491,7 @@ val appModule = module {
         bind<QueuePageManager>()
         bind<NotificationSender>()
         bind<DownloadItemOpener>()
+        bind<PerHostSettingsPageManager>()
         bind<PowerActionManager>()
     }
     single {
@@ -439,6 +533,7 @@ val appModule = module {
         val appHostNameVerifier: AppHostNameVerifier = get()
         OkHttpClient
             .Builder()
+            .protocols(listOf(Protocol.HTTP_1_1))
             .dispatcher(Dispatcher().apply {
                 //bypass limit on concurrent connections!
                 maxRequests = Int.MAX_VALUE
@@ -457,6 +552,25 @@ val appModule = module {
             get(),
             get(),
         )
+    }
+    single<SystemDownloadLocationProvider> {
+        when (Platform.asDesktop()) {
+            Platform.Desktop.Windows -> WindowsDownloadLocationProvider()
+            Platform.Desktop.Linux -> LinuxDownloadLocationProvider()
+            Platform.Desktop.MacOS -> MacDownloadLocationProvider()
+        }
+    }
+    single<IPerHostSettingsStorage> {
+        PerHostSettingsDatastoreStorage(
+            kotlinxSerializationDataStore<List<PerHostSettingsItem>>(
+                AppInfo.optionsDir.resolve("perHostSettings.json"),
+                get(),
+                ::emptyList,
+            )
+        )
+    }
+    single {
+        PerHostSettingsManager(get())
     }
 
 }

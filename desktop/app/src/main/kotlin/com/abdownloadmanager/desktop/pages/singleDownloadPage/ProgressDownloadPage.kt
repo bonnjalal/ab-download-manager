@@ -1,6 +1,6 @@
 package com.abdownloadmanager.desktop.pages.singleDownloadPage
 
-import com.abdownloadmanager.desktop.utils.configurable.RenderConfigurable
+import com.abdownloadmanager.shared.ui.configurable.RenderConfigurable
 import com.abdownloadmanager.desktop.pages.singleDownloadPage.SingleDownloadPageSections.*
 import com.abdownloadmanager.shared.utils.ui.LocalContentColor
 import com.abdownloadmanager.shared.utils.ui.WithContentAlpha
@@ -17,7 +17,6 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -44,6 +43,7 @@ import com.abdownloadmanager.shared.utils.LocalSizeUnit
 import com.abdownloadmanager.shared.utils.convertPositiveSizeToHumanReadable
 import com.abdownloadmanager.shared.utils.ui.useIsInDebugMode
 import com.abdownloadmanager.shared.utils.div
+import com.abdownloadmanager.shared.utils.ui.theme.myShapes
 import ir.amirab.downloader.downloaditem.DownloadJobStatus
 import ir.amirab.downloader.monitor.*
 import ir.amirab.downloader.part.PartDownloadStatus
@@ -51,7 +51,6 @@ import ir.amirab.downloader.utils.ExceptionUtils
 import ir.amirab.util.compose.StringSource
 import ir.amirab.util.compose.asStringSource
 import ir.amirab.util.compose.resources.myStringResource
-import kotlin.math.sin
 
 enum class SingleDownloadPageSections(
     val title: StringSource,
@@ -91,7 +90,7 @@ fun ProgressDownloadPage(singleDownloadComponent: SingleDownloadComponent, itemS
     ) {
         Column(
             Modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(myShapes.defaultRounded)
                 .padding(1.dp),
         ) {
             //tabs
@@ -249,7 +248,7 @@ private fun RenderProgressBar(itemState: IDownloadItemState) {
     Box(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(myShapes.defaultRounded)
             .height(14.dp)
             .background(myColors.onBackground / 15)
     ) {
@@ -338,7 +337,7 @@ private fun RenderPartInfo(
                 Modifier
                     .padding(horizontal = horizontalPadding)
                     .height(4.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(myShapes.defaultRounded)
                     .background(myColors.onBackground / 15)
             )
             Box(
@@ -357,7 +356,7 @@ private fun RenderPartInfo(
                                         PartDownloadStatus.Completed -> false
                                         PartDownloadStatus.IDLE -> false
                                         PartDownloadStatus.ReceivingData -> true
-                                        PartDownloadStatus.SendGet -> true
+                                        PartDownloadStatus.Connecting -> true
                                     }
                                 }
                             } else {
@@ -370,7 +369,7 @@ private fun RenderPartInfo(
                 Table(
                     list = listToShow,
                     key = {
-                        it.value.from
+                        it.value.id
                     },
                     modifier = Modifier
                         .fillMaxSize(),
@@ -467,7 +466,7 @@ private fun prettifyStatus(status: PartDownloadStatus): StringSource {
         PartDownloadStatus.IDLE -> Res.string.idle
         PartDownloadStatus.Completed -> Res.string.finished
         PartDownloadStatus.ReceivingData -> Res.string.receiving_data
-        PartDownloadStatus.SendGet -> Res.string.connecting
+        PartDownloadStatus.Connecting -> Res.string.connecting
     }.asStringSource()
 }
 
@@ -534,7 +533,9 @@ private fun RenderPropertyItem(propertyItem: SingleDownloadPagePropertyItem) {
             Text(
                 text = value.rememberString(),
                 modifier = Modifier
-                    .basicMarquee()
+                    .basicMarquee(
+                        iterations = Int.MAX_VALUE
+                    )
                     .weight(0.7f),
                 maxLines = 1,
                 fontSize = myTextSizes.base,
@@ -700,7 +701,7 @@ private fun ToggleButton(
             },
         )
         if (showPromptOnNonePresumablePause) {
-            val shape = RoundedCornerShape(6.dp)
+            val shape = myShapes.defaultRounded
             val closePopup = {
                 showPromptOnNonePresumablePause = false
             }
@@ -757,21 +758,20 @@ private fun RenderParts(parts: List<UiPart>, modifier: Modifier) {
         if (parts.isNotEmpty()) {
             val sortedParts = remember(parts) {
                 parts.sortedBy {
-                    it.from
+                    it.id
                 }
             }
-            val total = sortedParts.last().to?.let {
-                it + 1 // parts are end inclusive
-            } ?: return
             for (p in sortedParts) {
-                val partSpace = (p.length!!.toDouble() / total).toFloat()
+                val partSpace = p.partSpace
                 if (partSpace <= 0f) continue
-                RenderPart(
-                    p,
-                    Modifier
-                        .fillMaxHeight()
-                        .weight(partSpace)
-                )
+                key(p.id) {
+                    RenderPart(
+                        p,
+                        Modifier
+                            .fillMaxHeight()
+                            .weight(partSpace)
+                    )
+                }
             }
         }
     }
@@ -779,14 +779,16 @@ private fun RenderParts(parts: List<UiPart>, modifier: Modifier) {
 
 @Composable
 private fun RenderPart(part: UiPart, modifier: Modifier) {
-    val partProgress = part.percent!! / 100f
+    val partProgress = part.percent?.let {
+        it / 100f
+    } ?: 0f
 
     val foregroundColor = when (part.status) {
         is PartDownloadStatus.Canceled -> myColors.error
         PartDownloadStatus.Completed -> myColors.info
         PartDownloadStatus.IDLE -> myColors.info / 25
         PartDownloadStatus.ReceivingData -> myColors.success
-        PartDownloadStatus.SendGet -> myColors.warning
+        PartDownloadStatus.Connecting -> myColors.warning
     }
     Row(modifier) {
         Box(

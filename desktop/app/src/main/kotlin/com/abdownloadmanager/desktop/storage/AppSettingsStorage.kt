@@ -3,12 +3,15 @@ package com.abdownloadmanager.desktop.storage
 import androidx.datastore.core.DataStore
 import arrow.optics.Lens
 import arrow.optics.optics
+import com.abdownloadmanager.shared.ui.theme.ThemeSettingsStorage
 import com.abdownloadmanager.shared.utils.ConfigBaseSettingsByMapConfig
+import com.abdownloadmanager.shared.utils.SystemDownloadLocationProvider
+import com.abdownloadmanager.shared.utils.ui.theme.DEFAULT_UI_SCALE
 import ir.amirab.util.compose.localizationmanager.LanguageStorage
 import ir.amirab.util.config.*
+import ir.amirab.util.enumValueOrNull
 import kotlinx.serialization.Serializable
 import org.koin.core.component.KoinComponent
-import java.io.File
 
 @optics([arrow.optics.OpticsTarget.LENS])
 @Serializable
@@ -36,14 +39,16 @@ data class AppSettingsModel(
     val speedLimit: Long = 0,
     val autoStartOnBoot: Boolean = true,
     val notificationSound: Boolean = true,
-    val defaultDownloadFolder: String = File(System.getProperty("user.home"))
-        .resolve("Downloads/ABDM")
+    val defaultDownloadFolder: String = SystemDownloadLocationProvider
+        .instance.getDownloadLocation()
+        .resolve("ABDM")
         .canonicalFile.absolutePath,
     val browserIntegrationEnabled: Boolean = true,
     val browserIntegrationPort: Int = 15151,
     val trackDeletedFilesOnDisk: Boolean = false,
     val deletePartialFileOnDownloadCancellation: Boolean = false,
-    val useBitsForSpeed: Boolean = false,
+    val sizeUnit: SupportedSizeUnits = SupportedSizeUnits.BinaryBytes,
+    val speedUnit: SupportedSizeUnits = SupportedSizeUnits.BinaryBytes,
     val ignoreSSLCertificates: Boolean = false,
     val useCategoryByDefault: Boolean = true,
     val userAgent: String = "",
@@ -82,7 +87,8 @@ data class AppSettingsModel(
             val browserIntegrationPort = intKeyOf("browserIntegrationPort")
             val trackDeletedFilesOnDisk = booleanKeyOf("trackDeletedFilesOnDisk")
             val deletePartialFileOnDownloadCancellation = booleanKeyOf("deletePartialFileOnDownloadCancellation")
-            val useBitsForSpeed = booleanKeyOf("useBitsForSpeed")
+            val sizeUnit = stringKeyOf("sizeUnit")
+            val speedUnit = stringKeyOf("speedUnit")
             val ignoreSSLCertificates = booleanKeyOf("ignoreSSLCertificates")
             val useCategoryByDefault = booleanKeyOf("useCategoryByDefault")
             val userAgent = stringKeyOf("userAgent")
@@ -91,13 +97,14 @@ data class AppSettingsModel(
 
         override fun get(source: MapConfig): AppSettingsModel {
             val default by lazy { AppSettingsModel.default }
+            // for nullable types we don't get default value
             return AppSettingsModel(
                 theme = source.get(Keys.theme) ?: default.theme,
                 defaultDarkTheme = source.get(Keys.defaultDarkTheme) ?: default.defaultDarkTheme,
                 defaultLightTheme = source.get(Keys.defaultLightTheme) ?: default.defaultLightTheme,
-                language = source.get(Keys.language) ?: default.language,
-                font = source.get(Keys.font) ?: default.font,
-                uiScale = source.get(Keys.uiScale) ?: default.uiScale,
+                language = source.get(Keys.language),
+                font = source.get(Keys.font),
+                uiScale = source.get(Keys.uiScale),
                 mergeTopBarWithTitleBar = source.get(Keys.mergeTopBarWithTitleBar) ?: default.mergeTopBarWithTitleBar,
                 useNativeMenuBar = source.get(Keys.useNativeMenuBar) ?: default.useNativeMenuBar,
                 showIconLabels = source.get(Keys.showIconLabels) ?: default.showIconLabels,
@@ -126,7 +133,8 @@ data class AppSettingsModel(
                 trackDeletedFilesOnDisk = source.get(Keys.trackDeletedFilesOnDisk) ?: default.trackDeletedFilesOnDisk,
                 deletePartialFileOnDownloadCancellation = source.get(Keys.deletePartialFileOnDownloadCancellation)
                     ?: default.deletePartialFileOnDownloadCancellation,
-                useBitsForSpeed = source.get(Keys.useBitsForSpeed) ?: default.useBitsForSpeed,
+                sizeUnit = source.get(Keys.sizeUnit)?.enumValueOrNull<SupportedSizeUnits>() ?: default.sizeUnit,
+                speedUnit = source.get(Keys.speedUnit)?.enumValueOrNull<SupportedSizeUnits>() ?: default.speedUnit,
                 ignoreSSLCertificates = source.get(Keys.ignoreSSLCertificates) ?: default.ignoreSSLCertificates,
                 useCategoryByDefault = source.get(Keys.useCategoryByDefault) ?: default.useCategoryByDefault,
                 userAgent = source.get(Keys.userAgent) ?: default.userAgent,
@@ -163,7 +171,8 @@ data class AppSettingsModel(
                 put(Keys.browserIntegrationPort, focus.browserIntegrationPort)
                 put(Keys.trackDeletedFilesOnDisk, focus.trackDeletedFilesOnDisk)
                 put(Keys.deletePartialFileOnDownloadCancellation, focus.deletePartialFileOnDownloadCancellation)
-                put(Keys.useBitsForSpeed, focus.useBitsForSpeed)
+                put(Keys.sizeUnit, focus.sizeUnit.name)
+                put(Keys.speedUnit, focus.speedUnit.name)
                 put(Keys.ignoreSSLCertificates, focus.ignoreSSLCertificates)
                 put(Keys.useCategoryByDefault, focus.useCategoryByDefault)
                 put(Keys.userAgent, focus.userAgent)
@@ -181,13 +190,15 @@ private val fontLens: Lens<AppSettingsModel, String?>
             s.copy(font = f)
         }
     )
-private val uiScaleLens: Lens<AppSettingsModel, Float?>
+
+// use null for default scale!
+private val uiScaleLens: Lens<AppSettingsModel, Float>
     get() = Lens(
         get = {
-            it.uiScale
+            it.uiScale ?: DEFAULT_UI_SCALE
         },
         set = { s, f ->
-            s.copy(uiScale = f)
+            s.copy(uiScale = f.takeIf { it != DEFAULT_UI_SCALE })
         }
     )
 private val languageLens: Lens<AppSettingsModel, String?>
@@ -204,10 +215,11 @@ class AppSettingsStorage(
     settings: DataStore<MapConfig>,
 ) :
     ConfigBaseSettingsByMapConfig<AppSettingsModel>(settings, AppSettingsModel.ConfigLens),
-    LanguageStorage {
-    val theme = from(AppSettingsModel.theme)
-    val defaultDarkTheme = from(AppSettingsModel.defaultDarkTheme)
-    val defaultLightTheme = from(AppSettingsModel.defaultLightTheme)
+    LanguageStorage,
+    ThemeSettingsStorage {
+    override val theme = from(AppSettingsModel.theme)
+    override val defaultDarkTheme = from(AppSettingsModel.defaultDarkTheme)
+    override val defaultLightTheme = from(AppSettingsModel.defaultLightTheme)
 
     override val selectedLanguage = from(languageLens)
     val font = from(fontLens)
@@ -234,7 +246,8 @@ class AppSettingsStorage(
     val browserIntegrationPort = from(AppSettingsModel.browserIntegrationPort)
     val trackDeletedFilesOnDisk = from(AppSettingsModel.trackDeletedFilesOnDisk)
     val deletePartialFileOnDownloadCancellation = from(AppSettingsModel.deletePartialFileOnDownloadCancellation)
-    val useBitsForSpeed = from(AppSettingsModel.useBitsForSpeed)
+    val sizeUnit = from(AppSettingsModel.sizeUnit)
+    val speedUnit = from(AppSettingsModel.speedUnit)
     val ignoreSSLCertificates = from(AppSettingsModel.ignoreSSLCertificates)
     val useCategoryByDefault = from(AppSettingsModel.useCategoryByDefault)
     val userAgent = from(AppSettingsModel.userAgent)
