@@ -4,8 +4,14 @@
     nixpkgs.url = "github:Nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         version = "1.7.1";
@@ -14,7 +20,7 @@
           sha256 = "2535b9c131b37d21c09e98b7876d50e3ce48ee7a1a2a3c2b63833c1e00e48534";
         };
         runtimeDeps = with pkgs; [
-# GUI and windowing
+          # GUI and windowing
           gtk3
           gtk4
           glib
@@ -22,7 +28,7 @@
           cairo
           pango
           atk
-          
+
           # X11 and Wayland support
           xorg.libX11
           xorg.libXext
@@ -35,38 +41,38 @@
           xorg.libXdamage
           xorg.libXcursor
           wayland
-          
+
           # Audio and multimedia
           alsa-lib
           pulseaudio
-          
+
           # System integration
           libnotify
           xdg-utils
           cups
           dbus
           systemd
-          
+
           # Fonts and rendering
           fontconfig
           freetype
           dejavu_fonts
           liberation_ttf
-          
+
           # OpenGL
           libGL
           libGLU
           mesa
-          
+
           # Desktop integration
           gsettings-desktop-schemas
           hicolor-icon-theme
-          
+
           # Java/JNA native libraries
           glibc
           gcc-unwrapped.lib
           zlib
-          
+
           # Additional libraries that might be needed
           libpng
           libjpeg
@@ -79,15 +85,15 @@
         libPath = pkgs.lib.makeLibraryPath runtimeDeps;
 
         xdgDataDirs = pkgs.lib.makeSearchPathOutput "share" "XDG_DATA_DIRS" runtimeDeps;
-# Comprehensive font configuration
+        # Comprehensive font configuration
         fontConf = pkgs.makeFontsConf {
-          fontDirectories = with pkgs; [ 
-            dejavu_fonts 
-            liberation_ttf 
+          fontDirectories = with pkgs; [
+            dejavu_fonts
+            liberation_ttf
             freefont_ttf
             noto-fonts
             noto-fonts-cjk-sans
-            noto-fonts-emoji
+            noto-fonts-color-emoji
           ];
         };
       in
