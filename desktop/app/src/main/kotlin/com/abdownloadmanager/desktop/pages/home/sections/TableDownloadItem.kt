@@ -2,10 +2,10 @@
 
 package com.abdownloadmanager.desktop.pages.home.sections
 
-import com.abdownloadmanager.shared.utils.ui.LocalContentColor
-import com.abdownloadmanager.shared.utils.ui.widget.MyIcon
-import com.abdownloadmanager.shared.utils.ui.myColors
-import com.abdownloadmanager.shared.utils.ui.theme.myTextSizes
+import com.abdownloadmanager.shared.util.ui.LocalContentColor
+import com.abdownloadmanager.shared.util.ui.widget.MyIcon
+import com.abdownloadmanager.shared.util.ui.myColors
+import com.abdownloadmanager.shared.util.ui.theme.myTextSizes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -25,9 +25,9 @@ import androidx.compose.ui.unit.dp
 import com.abdownloadmanager.shared.ui.widget.CheckBox
 import com.abdownloadmanager.shared.ui.widget.Text
 import com.abdownloadmanager.resources.Res
-import com.abdownloadmanager.shared.utils.*
-import com.abdownloadmanager.shared.utils.FileIconProvider
-import com.abdownloadmanager.shared.utils.category.Category
+import com.abdownloadmanager.shared.util.*
+import com.abdownloadmanager.shared.util.FileIconProvider
+import com.abdownloadmanager.shared.util.category.Category
 import ir.amirab.util.compose.resources.myStringResource
 import ir.amirab.downloader.downloaditem.DownloadJobStatus
 import ir.amirab.downloader.monitor.CompletedDownloadItemState
@@ -212,7 +212,8 @@ fun StatusCell(
                         } else {
                             DownloadProgressStatus.Error
                         },
-                        itemState.gotAnyProgress
+                        itemState.gotAnyProgress,
+                        itemState.isWaiting,
                     )
                 }
 
@@ -224,7 +225,8 @@ fun StatusCell(
                         } else {
                             DownloadProgressStatus.Paused
                         },
-                        itemState.gotAnyProgress
+                        itemState.gotAnyProgress,
+                        itemState.isWaiting,
                     )
                 }
 
@@ -232,7 +234,8 @@ fun StatusCell(
                     ProgressAndPercent(
                         itemState.percent,
                         DownloadProgressStatus.Downloading,
-                        itemState.gotAnyProgress
+                        itemState.gotAnyProgress,
+                        itemState.isWaiting,
                     )
                 }
 
@@ -240,7 +243,8 @@ fun StatusCell(
                     ProgressAndPercent(
                         status.percent,
                         DownloadProgressStatus.CreatingFile,
-                        itemState.gotAnyProgress
+                        itemState.gotAnyProgress,
+                        itemState.isWaiting,
                     )
                 }
 
@@ -248,7 +252,8 @@ fun StatusCell(
                     ProgressAndPercent(
                         itemState.percent,
                         DownloadProgressStatus.Resuming,
-                        itemState.gotAnyProgress
+                        itemState.gotAnyProgress,
+                        itemState.isWaiting,
                     )
                 }
 
@@ -256,7 +261,8 @@ fun StatusCell(
                     ProgressAndPercent(
                         itemState.percent,
                         DownloadProgressStatus.Retrying,
-                        itemState.gotAnyProgress
+                        itemState.gotAnyProgress,
+                        itemState.isWaiting,
                     )
                 }
 
@@ -366,6 +372,7 @@ private fun ProgressAndPercent(
     percent: Int?,
     status: DownloadProgressStatus,
     gotAnyProgress: Boolean,
+    isWaiting: Boolean,
 ) {
     val background = when (status) {
         DownloadProgressStatus.Error -> myColors.errorGradient
@@ -375,7 +382,13 @@ private fun ProgressAndPercent(
         DownloadProgressStatus.Downloading -> myColors.primaryGradient
         DownloadProgressStatus.Retrying -> myColors.errorGradient
     }
-    val statusString = myStringResource(status.toStringResource())
+    val statusString = myStringResource(
+        if (isWaiting) {
+            Res.string.waiting
+        } else {
+            status.toStringResource()
+        }
+    )
     Column {
         val statusText = if (gotAnyProgress) {
             "${percent ?: "."}% $statusString"
